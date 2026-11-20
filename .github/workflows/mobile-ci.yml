@@ -73,7 +73,7 @@ jobs:
 
       - name: Upload test reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: airton-test-reports
           path: app/build/reports/tests/testDebugUnitTest/
@@ -81,7 +81,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload Debug APK artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: airton-debug-apk
           path: release-dist/
