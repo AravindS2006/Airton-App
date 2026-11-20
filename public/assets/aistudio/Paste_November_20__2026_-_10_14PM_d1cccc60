@@ -1,0 +1,538 @@
+# AI Coding Agent Master Prompt — AirTon Mobile Application
+
+**Repository:** https://github.com/AravindS2006/AirTon  
+**Target location:** `apps/mobile/`  
+**Primary target:** Android-first, cross-platform-ready mobile application  
+**Project direction:** Home intraocular-pressure (IOP) monitoring for patients already under a treating doctor's care  
+**Required delivery:** A polished, testable mobile app with deterministic mock data, plus GitHub Actions CI and tagged Android GitHub Releases.
+
+---
+
+## 1. Your role and mission
+
+Act as a senior mobile product engineer, React Native architect, UX/UI designer, accessibility specialist, test engineer, and DevOps engineer. Your assignment is to design and implement a professional AirTon mobile application inside the existing repository.
+
+Do not treat this as a generic health dashboard or a generic glaucoma-screening app. First understand the actual AirTon project and its evidence boundaries. The mobile app must support the intended home-monitoring workflow: a patient or trained caregiver performs clinician-prescribed monitoring, the system records eye-specific acquisition results and their provenance, and the assigned care team can review the history. It must communicate device readiness, acquisition quality, local-save state, delivery state, and clinician-review state without implying that any one of those states proves clinical safety or diagnosis.
+
+Build a high-quality, coherent, responsive native application—not a static Figma-like mockup. Every visible control must do something meaningful in the demo, all main navigation paths must work, and sample workflows must persist locally during the app session and across restarts where appropriate.
+
+Work directly in the repository. Inspect before editing, preserve unrelated project work, implement the app, run checks, create the GitHub Actions workflows, and finish with a clear implementation report. Do not stop after producing a plan or wireframes.
+
+## 2. Mandatory repository reconnaissance
+
+Before writing code, inspect and understand at least these files and their linked requirements:
+
+- `AGENTS.md`
+- `README.md`
+- `docs/product/specification.md`
+- `docs/product/requirements.md`
+- `docs/project/status.md`
+- `config/home-monitoring.json`
+- `docs/architecture/system.md`
+- `docs/cloud/architecture.md` and `docs/cloud/operations.md`
+- `docs/clinical/validation-plan.md` and `docs/clinical/home-monitoring-validation.md`
+- `docs/quality/risk-register.md`
+- `schemas/measurement.schema.json`
+- `src/airton/contracts.py`, `src/airton/simulator.py`, `src/airton/storage.py`, `src/airton/api.py`, and `src/airton/reporting.py`
+- `apps/web/README.md`, `apps/web/App.tsx`, `apps/web/types.ts`, `apps/web/services/mockApiService.ts`, and the existing patient/doctor/admin dashboard components
+- `.github/workflows/ci.yml`
+
+Use the repository's current source as the source of truth. Do not assume the README or old pitch decks describe a verified physical product. Review the existing web UI for useful information architecture, but do not simply port its misleading or outdated elements. In particular, do not carry forward its random reading generator, stale appointment dates, invented risk levels, mock revenue figures, or presentation as if it were a live service.
+
+Do not alter or delete `legacy/`, recovered artifacts, notebooks, local-only model weights, evidence registers, or existing product/clinical records. Do not rewrite the existing root CI workflow in a way that removes its Python or web checks. Place the new mobile application in `apps/mobile/` and add separate workflows unless a repository convention clearly requires otherwise.
+
+## 3. Product truth, intended use, and non-negotiable safety boundary
+
+### 3.1 What AirTon is intended to become
+
+AirTon is a proposed portable, affordable, non-contact home eye-pressure monitoring system. The first product direction confirmed in the repository is **home IOP monitoring for patients already under a doctor's care**. Patients follow an individualized monitoring plan established by their treating clinician. The device is expected to guide positioning, check readiness, reject unsuitable acquisitions, identify the eye, retain measurement quality and provenance, and make a traceable history available to the assigned care team.
+
+The concept combines a proposed air-puff stimulus, optical sensing, signal processing / future calibrated pressure estimation, a device-side interface, and connected reporting. The mobile app is the patient/caregiver companion and a mobile care-team review surface for the prototype phase.
+
+### 3.2 What is not verified today
+
+The repository explicitly says:
+
+- There is no verified AirTon physical pressure-estimation model or clinically qualified model.
+- The recovered Keras and PyTorch work concerns retinal-image classification research, not IOP estimation. Its provenance and clinical qualification are unresolved.
+- The available simulator creates fictional values and synthetic raw-sample payloads. It does not model a physical pressure waveform or a real acquisition.
+- The recovered React web interface has simulated role selection, mock readings, mock patients, and illustrative business data. It has no real authentication, device link, production backend, or clinical service.
+- The local Python API is synthetic-only and loopback-bound. It is not a production or mobile-facing clinical API.
+- No approved acquisition safety limits, physical interlocks, BLE protocol, production cloud account, care-team service, or clinical release authorization are established by the repository.
+- Monitoring schedules, repetitions, retry limits, clinical alert thresholds, calibration intervals, pneumatic limits, and optical exposure limits are deliberately `null` in `config/home-monitoring.json`.
+
+Treat these as hard constraints, not optional disclaimers.
+
+### 3.3 Forbidden app behavior
+
+The app must never:
+
+1. Claim to diagnose, screen for, rule out, or confirm glaucoma, or infer disease status from IOP alone.
+2. Display an invented “low / medium / high glaucoma risk” label, an unvalidated normal/abnormal pressure badge, an automated red/green clinical threshold, or a recommendation to change medication or treatment.
+3. Suggest medication changes, dosage changes, stopping treatment, self-triage, or emergency disposition.
+4. Treat a synthetic measurement, retinal classifier result, random number, or demo calibration ID as a real clinical result.
+5. Convert a rejected acquisition into a number. A rejected acquisition must have `iop_estimate_mmhg: null` and one or more explicit quality-rejection reasons.
+6. Represent a locally saved item as delivered, a delivered item as read, or a read item as clinically reviewed. These are distinct states.
+7. Claim that a doctor is continuously monitoring the app, that notifications are urgent clinical alerts, or that a clinician will respond within a promised time.
+8. Trigger a physical stimulus, air puff, pump, valve, motor, laser, or other actuator from a phone command. No hardware actuation is part of this task.
+9. Connect to an assumed or guessed BLE UUID, device protocol, sensor, or hardware endpoint. The device communication contract has not been established.
+10. Upload actual patient information or health data to a mock endpoint, public service, analytics system, or GitHub repository.
+
+Every demo screen containing measurements, records, patient profiles, device state, or reports must have clear persistent demo labeling. Use text and visual treatment together; do not rely on a tiny footnote or color alone.
+
+## 4. Product personas and role-based experience
+
+Create a role-based demo experience with three spaces. Role selection is a **demo-only persona switch**, not authentication or authorization.
+
+### A. Patient / trained caregiver
+
+Primary experience: very simple, reassuring, accessible, and low cognitive load. The user should understand what to do next without needing medical or technical knowledge.
+
+Core needs:
+
+- See whether the app is in simulation mode and whether a device is actually connected (in this version it is not).
+- View the care plan only when a clinician-defined plan is present in the fixture. Do not invent a schedule or threshold when the source configuration is `null`.
+- See a simple session-status card and the most recent synthetic session, if any.
+- Start a guided **simulated** session that explains the steps but does not operate physical hardware.
+- Confirm right eye (OD) or left eye (OS) in the workflow and retain separate eye records.
+- Understand accepted versus rejected acquisition and the reason for rejection.
+- Review a chronological measurement history and detail/provenance screen.
+- See local-save / pending-sync / delivered / clinician-review states separately.
+- View the assigned care-team contact details included in mock data, and see clinician-authored instructions as read-only content.
+- Manage ordinary app settings such as language, text size, notification preferences, and demo reset.
+
+### B. Treating clinician
+
+Primary experience: concise, traceable review of assigned patients and all sessions, including failures and missing data. It is not a diagnostic decision-support engine.
+
+Core needs:
+
+- View a mock assigned-patient roster and search/filter it.
+- Open a patient profile and inspect the full chronological history for OD and OS.
+- Review accepted and rejected acquisitions, quality reasons, timestamps, provenance, delivery state, and previous amendments.
+- Acknowledge that a record has been reviewed, request follow-up/reacquisition, or add a note in the demo workflow.
+- Create or edit an illustrative care-plan schedule only through explicit clinician actions. Preserve unresolved values as “Not configured”; do not prefill clinical limits, retry counts, or alert thresholds.
+- View a review queue containing delivered-but-not-yet-reviewed sample records.
+- Distinguish administrative receipt from a clinician's actual review action.
+
+All clinician actions are simulated and append-only in the local demo store. A note or amendment must show the mock author and timestamp. Do not silently overwrite a previous observation or review event.
+
+### C. Clinic administrator / device-service staff
+
+Primary experience: operational visibility, not clinical interpretation.
+
+Core needs:
+
+- View mock clinic / staff / patient assignment records.
+- View a mock device inventory with serial, model, firmware, calibration identifier/status, last service record, and assignment state.
+- View enrolment and training status as demonstration data.
+- View service and calibration-history examples, with unresolved values clearly marked.
+- See high-level workflow counts such as records awaiting sync or clinician review, but never present fabricated revenue, MRR, ROI, or business performance as real.
+- Do not allow an admin persona to alter clinical observations or act as a clinician unless an explicit clinician role is separately selected.
+
+For a compact mobile release, patient and clinician flows are the priority. Admin/service views may be a smaller but functional section. Keep the architecture open for a separate web-based administrative console later.
+
+## 5. Recommended technical direction
+
+Use **React Native + Expo + TypeScript**, Android-first and structured so iOS can be added without a rewrite. Use the latest mutually compatible stable Expo SDK / React Native versions available at implementation time; verify package compatibility from official documentation, pin installed versions in the lockfile, and avoid blindly using “latest” for every transitive dependency.
+
+Use an Expo **development build / native project workflow**, not Expo Go as the production target. The future device integration may require native BLE libraries or other native modules that are not bundled in Expo Go. Expo documentation explains that development builds support custom native modules and production-quality projects; see:
+
+- `https://docs.expo.dev/develop/development-builds/faq/`
+- `https://docs.expo.dev/workflow/using-libraries/`
+- `https://docs.expo.dev/build-reference/android-builds/`
+
+Preferred building blocks (use only where they add value):
+
+- Expo Router for typed, maintainable navigation.
+- TypeScript strict mode.
+- Zustand or a similarly small state store for demo/session/UI state.
+- TanStack Query only where asynchronous repository patterns make it useful; do not add needless complexity for a deterministic local demo.
+- `expo-sqlite` for local demonstration records and append-only review events; keep the storage adapter replaceable.
+- `expo-secure-store` for future device/session credentials only when real credential flows are implemented. Do not invent credentials for the demo.
+- A maintained React Native chart package compatible with the chosen Expo SDK for eye-specific trend visualization.
+- A maintained icon set with consistent stroke weights.
+- Expo Notifications only for clearly labeled, local demo reminders; never represent them as a clinical alert service.
+- React Native Testing Library and Jest/Vitest-compatible tooling for tests, selected according to Expo support at implementation time.
+
+If a different technical choice is demonstrably better, explain why in `apps/mobile/README.md` before adopting it. Do not add a backend, cloud provider, paid service, Firebase project, EAS account dependency, or external analytics provider just to make the prototype appear complete.
+
+### Architecture boundaries
+
+Use feature-oriented modules and clean ports/adapters. Keep UI components independent from data generation and persistence. At minimum define interfaces/adapters resembling:
+
+- `MeasurementRepository`
+- `SessionRepository`
+- `CarePlanRepository`
+- `PatientRepository`
+- `ClinicianRepository`
+- `DeviceGateway`
+- `SyncRepository`
+- `ReviewRepository`
+- `DemoModeController`
+
+Provide deterministic fake/mock implementations for every interface. Real implementations can be added later without rewriting the screens. The only device gateway in this version must be a simulator/mock gateway. Its name, UI, logs, and output must say that it is simulated.
+
+Do not call `http://127.0.0.1:8765` from a physical phone or pretend the Python loopback API is remotely accessible. That API is intentionally local-only and synthetic-only. The app should use an in-process mock repository unless a future, reviewed, authenticated API contract is added.
+
+## 6. App information architecture and required screens
+
+Create a refined, role-aware bottom navigation with no more than five primary destinations per role. Use a clear profile/settings entry and predictable back behavior. Include empty, loading, error, and offline states, not only populated screens.
+
+### Shared screens
+
+1. **Splash / app launch** — custom AirTon wordmark treatment, lightweight animation, then route to demo welcome or last selected demo persona.
+2. **Welcome / demo disclosure** — what AirTon is intended to do, prominent “Prototype / simulation only” notice, and a clear “Explore demo” entry.
+3. **Demo role selector** — Patient, Clinician, Clinic / Service. Explain that this is a role preview, not real sign-in.
+4. **Notifications inbox** — local reminders and mock workflow updates; each item identifies whether it is a demo event, a sync update, or a clinician review event. Avoid emergency language.
+5. **Profile and settings** — display name, selected persona, language, font size, theme preference, notification preference, legal/safety disclosure, app version, demo reset.
+6. **About / intended-use and limitations** — plain-language explanation of home monitoring under a doctor's care, current prototype stage, and what the app cannot do.
+
+### Patient screens
+
+1. **Home dashboard**
+   - Greeting and discreet profile identity.
+   - Persistent simulation-only banner / chip.
+   - Device card: “No AirTon device connected” in the current build, with a “Try device simulation” action.
+   - Care-plan card: show schedule only if supplied by the mock clinician plan; otherwise say “Your monitoring plan has not been configured in this demo.”
+   - Latest session summary with date/time, OD/OS coverage, accepted/rejected states, and sync/review state.
+   - Next step card (e.g. view history or complete a demo session), never a fabricated clinical instruction.
+   - A calm, compact trend preview without normal-range bands or clinical threshold colors.
+
+2. **Guided measurement / simulated session**
+   - Step-by-step flow: review demo disclosure → select eye(s) according to mock plan → simulated device readiness → positioning guidance illustration → simulated acquisition → quality result → saved record summary.
+   - Explain each step in short, accessible language.
+   - Show “Simulation — no physical device or air puff is operating” throughout this journey.
+   - Include an obvious cancel/exit action and safe, non-coercive retry path.
+   - The fake device adapter may simulate ready, disconnected, calibration-unavailable, alignment-rejected, blink-rejected, signal-missing, and successful demo outcomes. These are software states only.
+   - A rejected outcome must show the reason and **must not show a pressure number**. Do not suggest repeated attempts beyond a reviewed, configured policy. If the policy is unset, show the retry limit as “Not configured” and let the demo flow end safely.
+   - Never claim the app has measured the user's actual eye.
+
+3. **Session result / detail**
+   - Clearly label the result as synthetic.
+   - Show OD or OS, date/time/time-zone, quality status, quality reasons, and value only for accepted synthetic records.
+   - Show provenance: measurement ID, session ID, subject demo ID, device demo ID, firmware version, calibration ID, model ID, raw SHA-256, and clock status.
+   - Show local persistence and sync state separately from acquisition quality.
+   - Display a non-clinical explanation: “This is a fictional software demonstration, not a medical result.”
+
+4. **History / trends**
+   - Chronological list with filters for eye, date range, accepted/rejected, sync state, and clinician-review state.
+   - OD and OS series must remain separate. Do not combine them into one average.
+   - Tooltips and accessible labels for chart points.
+   - Rejected sessions visible in the timeline even though no pressure number exists.
+   - No diagnostic bands, normal/abnormal labels, automated risk scores, or red/green medical decisions.
+
+5. **Care team / care plan**
+   - Display assigned clinician and clinic from fictional data.
+   - Display only mock clinician-authored instructions, with author/date metadata.
+   - The patient may view, not edit, the clinician's plan.
+   - Contact actions should be demo-only (e.g. show a simulated contact sheet) and must not place calls or send messages to real people.
+
+6. **Sync / connectivity status**
+   - Show local-only, pending, delivered, and review states as separate milestones.
+   - Simulate offline mode and later successful synchronization using the same immutable measurement ID.
+   - Demonstrate duplicate idempotent retry and a conflicting replay being quarantined rather than overwritten.
+   - Do not show “delivered” until the mock sync adapter records acknowledgement; do not show “reviewed” until a clinician persona takes that action.
+
+### Clinician screens
+
+1. **Clinician overview** — assigned patient count, records awaiting review, recent received sessions, and clear offline/delivery caveats. Use only seeded mock counts.
+2. **Patient roster** — search, filter, status, and open patient detail.
+3. **Patient detail** — identity from demo fixtures, care-plan summary, separate OD/OS histories, acquisition failures, and record provenance.
+4. **Review queue** — only items whose mock sync state is delivered and whose review state is pending.
+5. **Record review** — inspect full record; acknowledge review, add a note, or request follow-up. Each event is append-only with mock author and timestamp. Do not infer a diagnosis.
+6. **Care-plan editor** — clearly illustrative, clinician-only. Require explicit input and display “Not configured” for any missing schedule, repetition count, retry limit, threshold, interval, or escalation policy. Do not invent a safe value. For this prototype, avoid activating any physical measurement or sending any real patient instruction.
+
+### Clinic / device-service screens
+
+1. **Clinic overview** — sample patients, assigned care teams, and service records.
+2. **Patient and device assignment** — simulated enrolment, device allocation, return, reassignment, and training status.
+3. **Device inventory** — mock device ID/serial, firmware, calibration state, last service, assignment, and release status. Unknown fields must say “Not available” rather than be guessed.
+4. **Service history** — append-only inspection/calibration/repair examples with mock actor/time and a clear demo label.
+5. **Operational queue** — unsynced, delivered-awaiting-review, quarantined, or service-needed counts; no fabricated commercial revenue metrics.
+
+## 7. Data model and contract compatibility
+
+Treat `schemas/measurement.schema.json` and `src/airton/contracts.py` as the current synthetic contract reference. Implement a strictly typed TypeScript equivalent and runtime validation. Do not silently loosen the schema.
+
+The synthetic measurement model must preserve at least these fields:
+
+- `schema_version`
+- `measurement_id`
+- `session_id`
+- `subject_id`
+- `device_id`
+- `eye` (`OD` = right eye, `OS` = left eye)
+- `captured_at` (ISO-8601 timestamp with explicit timezone)
+- `synthetic` (must be `true` for these fixtures)
+- `quality_status` (`pass` or `reject`)
+- `quality_reasons`
+- `iop_estimate_mmhg` (number only for accepted synthetic demonstration records; `null` for rejection)
+- `calibration_id`
+- `model_id`
+- `firmware_version`
+- `raw_sha256`
+- `clock_status`
+
+Supported synthetic rejection reasons in the existing contract are `alignment`, `blink`, `signal_missing`, `calibration_expired`, and `clock_untrusted`. Preserve the existing invariants:
+
+- Rejected acquisition ⇒ non-empty reason list and `iop_estimate_mmhg === null`.
+- Accepted acquisition ⇒ no rejection reasons and trusted clock.
+- Untrusted clock ⇒ rejected acquisition and `clock_untrusted` reason.
+- IDs are demo-prefixed and records are explicitly synthetic.
+- Unknown extra fields are rejected for the current v1.0 synthetic record.
+- Same measurement ID + same contents is an idempotent duplicate; same ID + different contents is a conflict and must never overwrite the original.
+
+Keep three independent dimensions in the UI/domain model:
+
+**Acquisition quality:** accepted / rejected.  
+**Transport status:** local-only / pending / delivered / failed / quarantined.  
+**Clinical review status:** not applicable in demo / awaiting review / reviewed / follow-up requested.
+
+An accepted acquisition can remain local-only. A delivered record can remain unreviewed. A rejected acquisition can still be delivered as a failure record, with no pressure value. Do not collapse these state machines into one badge.
+
+Create versioned adapters for any future production schema instead of changing the meaning of the current synthetic `v1.0` contract. FHIR-shaped examples in the Python reporting helper are illustrative only; do not claim FHIR profile validation or hospital-system interoperability.
+
+## 8. Deterministic, useful mock data
+
+Build a dedicated, documented fixture package. Do not generate random readings at render time. Use stable seeds and fixed timestamps so screenshots, tests, and UI states remain reproducible.
+
+Include enough fictional data to demonstrate all important workflows:
+
+- At least 3 fictional patient profiles, each with a care-team assignment.
+- At least 2 fictional clinician profiles and 1 fictional clinic.
+- A small fleet of fictional devices with different service/calibration/assignment states.
+- At least 12 eye-specific synthetic measurements across multiple sessions and dates, with both OD and OS represented.
+- Both accepted and rejected acquisitions. Rejected examples must have null IOP and distinct valid quality reasons.
+- Records in local-only, pending-sync, delivered, and awaiting-clinician-review states.
+- At least one reviewed record with a mock review event, one follow-up request, and one immutable amendment/note.
+- One patient with no configured monitoring schedule, to demonstrate truthful null-state handling.
+- One offline / interrupted-sync scenario, one duplicate retry, and one conflicting replay scenario.
+- Sample notifications and service-history events.
+
+Use fictional names and demo-prefixed identifiers. Make the global demo banner persistent. Use the Python demo as a reference for field names and status semantics, not as a source of clinical truth. The simulator's 12–26 mmHg values, where reused, remain arbitrary fictional numbers; never present them as ranges, targets, or clinical thresholds. Prefer a compact, curated seed file over random generation.
+
+A “Reset demo data” setting should restore the fixture baseline and clearly warn that this clears local demo changes only. It must not delete unrelated files or user data outside the app's own demo database.
+
+## 9. Visual design system and interaction quality
+
+Create an elegant, premium, modern healthcare product aesthetic. The app should feel trustworthy, calm, precise, and exceptionally easy to use—closer to a carefully designed consumer health product than a dense hospital-management system.
+
+Suggested visual direction:
+
+- Light-first interface with warm off-white / very pale neutral backgrounds, deep navy typography, restrained AirTon blue, and a soft teal accent. Derive and document exact tokens rather than applying random colors per screen.
+- Spacious layouts, clear hierarchy, consistent card radii, precise spacing, restrained borders, subtle elevation, and tasteful micro-interactions.
+- Use glass-like translucency only for limited emphasis where it improves depth. Avoid heavy blur, excessive gradients, neon colors, clutter, or a dark trading-dashboard visual language.
+- Typography must remain highly legible at enlarged system font sizes. Use a coherent type scale and consistent numeric typography for timestamps and demonstration values.
+- Use one consistent icon family; do not mix emoji, platform icons, and random outline sets as primary navigation icons.
+- Make status understandable from labels and icons, not color alone. Red should not be used to imply disease/risk; use semantic color only for neutral operational states such as connection failure or rejected acquisition, paired with text.
+- Support compact phones and larger Android devices. Account for safe areas, keyboard, Android back gesture, system bars, and bottom navigation.
+- Touch targets should be comfortably large (aim for at least 44–48 dp where possible). Forms should have visible labels and helpful inline errors.
+- Provide accessible screen-reader names, logical reading order, accessible charts/tables, dynamic font scaling, reduced-motion support, and high-contrast treatment.
+- Support English and structure localization for Tamil. If full translations cannot be safely completed, provide the localization framework and clearly mark incomplete strings for review; do not machine-translate critical clinical instructions without review.
+- Use meaningful illustrations for positioning/setup and empty states. Do not use unrelated stock medical imagery or images implying an actual device exists when only concept drawings are available.
+
+Create a reusable design-token layer for color, spacing, typography, radii, shadows, and motion. Build reusable cards, badges, form controls, list rows, empty states, error states, chart wrappers, and disclosure banners. Do not duplicate slightly different versions of the same component across roles.
+
+## 10. Offline-first behavior, persistence, and integration seams
+
+The current deliverable is a local prototype. Implement a repository layer backed by deterministic fixtures and local SQLite persistence. Show the same state transitions that a future connected app will need, but label them as simulated.
+
+- App startup should work without network access.
+- Seed fixtures idempotently and preserve user-generated demo review actions.
+- Store measurement records immutably; add new review/amendment events rather than overwriting source records.
+- Model local-save, pending, delivered, failed, and quarantined sync states.
+- Simulate a network toggle and retry behavior. Retry must retain the same measurement ID.
+- Handle database errors gracefully with a recovery message; do not silently lose records.
+- Keep source timestamps with timezone and record clock trust; do not silently rewrite dates to device-local time without retaining the source timestamp.
+- Never log patient names, measurement payloads, tokens, or sensitive health details. All present data must remain fictional.
+
+Define future integration contracts but do not implement unsupported production integrations:
+
+- `DeviceGateway`: interface for discovery, pairing, readiness, acquisition events, and disconnect. Provide only a fake implementation and explicit “not connected to hardware” status.
+- `SyncRepository`: interface for durable upload acknowledgement, idempotent retries, and conflicts. Provide only local simulation.
+- `AuthProvider`: demo role switch only. Clearly separate it from production identity/authentication.
+- `CarePlanRepository`: read and update demo clinician-authored plans without assuming defaults.
+
+Document exactly what protocol, cloud API, provisioning process, credentials, data governance, and clinical approvals are required before these adapters can connect to real systems.
+
+## 11. Security, privacy, and ethical handling
+
+- Demo mode must not accept real patient health records. Do not include free-form “enter your real IOP” fields.
+- Do not upload fixtures or user-generated demo notes to a third-party service.
+- No analytics, advertising SDK, tracking pixel, or external crash-reporting service by default.
+- Avoid unnecessary permissions. Do not request camera, microphone, contacts, location, or Bluetooth permissions until a real feature needs them and its protocol is reviewed. The current fake device simulation should need no Bluetooth permission.
+- Do not commit API keys, signing keys, keystores, tokens, `.env` contents, real health data, or private model weights.
+- Include `.env.example` only for documented non-secret configuration; keep secrets out of mobile bundles.
+- Add a concise privacy/data handling statement explaining that the current build uses local fictional data only and is not a clinical service.
+- Use least-privilege GitHub Actions permissions and pin third-party actions to reviewed commit SHAs where practical.
+
+## 12. Testing and quality gates
+
+Add automated tests at multiple levels. At minimum test:
+
+### Domain and data-contract tests
+
+- Runtime validation of accepted and rejected synthetic measurements.
+- Rejected records never contain a pressure number.
+- OD/OS are preserved correctly.
+- Timezone and clock-trust rules are enforced.
+- Duplicate identical ingest is idempotent.
+- Conflicting replay never overwrites an existing record.
+- Review and amendment events are append-only.
+- Acquisition, sync, and clinical-review states remain independent.
+- Empty/unconfigured care-plan fields remain null/“Not configured”.
+
+### UI and workflow tests
+
+- First launch and demo-role switching.
+- Patient dashboard and history navigation.
+- Successful simulated acquisition.
+- Rejected simulated acquisition with no value.
+- Offline state and retry with unchanged measurement ID.
+- Delivered-but-unreviewed record, then clinician review acknowledgement.
+- Follow-up request and appended note.
+- Device not-connected state and demo simulation disclosure.
+- Reset demo data.
+- Font scaling / basic accessibility semantics for key screens.
+
+### Build and static checks
+
+- TypeScript strict type check.
+- Lint and formatting checks.
+- Unit and component tests.
+- Expo diagnostics (`expo-doctor` or its current supported equivalent).
+- Android debug build in CI.
+- Android signed release build in tag workflow.
+
+Manual QA should include a small Android emulator/device matrix and screenshots of the main patient and clinician journeys. Record limitations honestly. Do not claim that UI tests validate device safety or clinical performance.
+
+## 13. GitHub Actions CI/CD and GitHub Releases
+
+The repository already has `.github/workflows/ci.yml` for Python, ML synthetic checks, repository checks, and the recovered web app. Preserve it. Add separate mobile-specific workflows.
+
+### A. Pull request / branch CI
+
+Create `.github/workflows/mobile-ci.yml` with:
+
+- Triggers on `pull_request`, pushes to the primary development branch, and `workflow_dispatch`.
+- Path filters for `apps/mobile/**` and the workflow itself, while still allowing manual execution.
+- Minimal `permissions: contents: read`.
+- Concurrency grouping to cancel obsolete runs on the same branch/PR.
+- Checkout, setup Node LTS, dependency caching, and `npm ci`.
+- Run formatting/lint, TypeScript checking, unit/component tests, and Expo diagnostics.
+- Run `npx expo prebuild --platform android --non-interactive` using the committed app config and config plugins. Avoid destructive `--clean` behavior unless the native project is intentionally generated and the implications are documented.
+- Build a debug APK with Gradle (`assembleDebug`) so routine PR CI does not require signing credentials.
+- Upload the debug APK and test reports as workflow artifacts with a sensible retention period.
+- Use a JDK and Android SDK compatible with the selected Expo SDK / Android Gradle Plugin. Cache Gradle safely.
+- Use stable, reviewed action versions pinned to commit SHA where practical. Keep permissions read-only in this workflow.
+
+### B. Tagged Android release workflow
+
+Create `.github/workflows/release-android.yml` with:
+
+- Trigger on tags such as `mobile-v*` (example: `mobile-v1.0.0`) and optionally `workflow_dispatch` with a validated version/tag input.
+- Run the same quality checks before packaging.
+- Validate that the app version and Android `versionCode` are consistent with the intended release tag and previous release policy.
+- Generate Android native files through Expo prebuild if using Continuous Native Generation.
+- Build both an installable APK and a Play-ready Android App Bundle (AAB) using the Gradle release tasks.
+- Configure Android release signing through persistent GitHub Actions secrets. Expected secret names may be:
+  - `ANDROID_KEYSTORE_BASE64`
+  - `ANDROID_KEYSTORE_PASSWORD`
+  - `ANDROID_KEY_ALIAS`
+  - `ANDROID_KEY_PASSWORD`
+- Decode the base64 keystore into a temporary runner file, pass signing values as environment variables/Gradle properties, and delete the temporary file after the build. Never print secret values or upload the keystore.
+- Do **not** create a new throwaway signing key for each release; update signing identity must remain consistent. Do not commit a keystore to Git.
+- If signing secrets are unavailable, fail the production release job with a precise setup message (or create a clearly named unsigned test artifact in a separate non-release workflow). Do not publish an unsigned APK as a production release.
+- Generate SHA-256 checksums for APK/AAB and include them as release assets.
+- Create or update a GitHub Release for the exact tag using the repository's `GITHUB_TOKEN` / GitHub CLI, with least-privilege `contents: write` permission only for the release job. Generate concise release notes and attach APK, AAB, checksum file, and test summary.
+- Do not publish to Google Play or Apple App Store. GitHub Releases are the requested distribution target; store submission is a separate future approval.
+- Ensure release reruns are safe and do not silently replace artifacts with a different binary for the same immutable tag.
+
+### C. Repository hygiene
+
+- Keep `apps/mobile/package-lock.json` committed.
+- Add Android build outputs, local signing files, `local.properties`, `.env`, keystore files, and temporary generated data to appropriate `.gitignore` entries.
+- Add Dependabot or a documented dependency-update process for the mobile stack and GitHub Actions.
+- Add a `RELEASE.md` or release section in the mobile README describing how to create a semantic tag and what repository secrets are required. Do not include secret values.
+- Update the main README with a concise link to the mobile app README after the mobile app is real and runnable.
+
+## 14. Suggested mobile directory structure
+
+Adapt as needed, but preserve separation of concerns:
+
+```text
+apps/mobile/
+  app/                         # Expo Router routes/layouts
+  src/
+    components/                # Shared UI/design-system components
+    features/
+      onboarding/
+      patient/
+      clinician/
+      clinic/
+      measurement/
+      history/
+      sync/
+      devices/
+      settings/
+    domain/                    # Typed entities, enums, validation, invariants
+    data/
+      fixtures/                # Deterministic fictional data
+      repositories/            # Repository interfaces and fake adapters
+      persistence/             # SQLite schema, migrations, seed logic
+    services/                  # Demo session/sync/device state machines
+    theme/                     # Tokens, themes, typography
+    i18n/                      # English and Tamil localization structure
+    utils/
+  assets/                      # App icon, splash, approved illustrations
+  tests/
+  app.config.ts
+  package.json
+  package-lock.json
+  tsconfig.json
+  README.md
+```
+
+## 15. Required implementation sequence
+
+1. Complete repository reconnaissance and write a short internal implementation checklist.
+2. Decide the Expo SDK / React Native compatibility set and document it.
+3. Establish the visual system, app navigation, persistent demo disclosure, and role selector.
+4. Implement typed domain contracts, schema validation, deterministic mock fixtures, and local persistence.
+5. Implement patient dashboard, measurement simulation, detail/provenance, history, care-team, and sync-state flows.
+6. Implement clinician roster, patient detail, review queue, append-only review actions, and care-plan null-state editing.
+7. Implement compact clinic/device-service views and settings/about screens.
+8. Add accessibility, English/Tamil localization structure, error/empty/offline states, and responsive layouts.
+9. Add domain/UI tests and run all mobile checks locally.
+10. Add the mobile CI and Android release workflows; verify YAML syntax and workflow expressions.
+11. Run the existing repository checks as well as mobile checks. Do not let mobile work regress the existing Python/web pipelines.
+12. Update docs and README. Summarize the exact hardware/cloud/clinical work still blocked by missing specifications.
+
+Do not ask the user to choose libraries or resolve routine engineering details. Make conservative, well-documented choices. If a truly blocking unknown appears, implement a safe interface or “Not configured” state instead of fabricating a value.
+
+## 16. Definition of done / acceptance criteria
+
+The task is complete only when all of the following are true:
+
+- A native AirTon mobile app exists under `apps/mobile/` and starts successfully.
+- The app has a cohesive, polished design system and functional navigation.
+- Patient, clinician, and compact clinic/service demo personas are implemented.
+- All key screens use deterministic, fictional fixtures and visibly declare simulation-only status.
+- The measurement simulator can create accepted and rejected demo records, and rejected records never display an IOP number.
+- OD and OS remain separate throughout history, charts, detail views, and reports.
+- Every measurement exposes the required provenance and timestamp/clock metadata.
+- Local-save, pending, delivered, and clinician-review states are visibly distinct and behave correctly.
+- Offline simulation, duplicate retries, conflicting replays, review acknowledgements, and appended notes work in the demo.
+- No real Bluetooth connection, physical actuator control, clinical inference, diagnosis, treatment guidance, cloud upload, or real authentication is falsely implied.
+- Unconfigured care-plan, schedule, threshold, calibration, and retry parameters remain visibly unconfigured.
+- The repository's current synthetic contract and safety invariants are covered by tests.
+- TypeScript, lint, tests, Expo diagnostics, and Android debug build pass.
+- A tagged release workflow can produce a consistently signed Android APK and AAB and publish them, plus checksums, as a GitHub Release when the required signing secrets are present.
+- Existing Python and web CI checks remain intact.
+- `apps/mobile/README.md` documents setup, run, test, build, demo roles, current limitations, release process, and required GitHub secrets.
+- The final report lists changed files, commands run and results, produced artifact paths, CI workflow names, and remaining real-device/cloud/clinical integration gates. Never claim a test or release succeeded unless it was actually run and verified.
+
+## 17. Final engineering principle
+
+Optimize for trust, clarity, and traceability over feature count. A smaller app that faithfully distinguishes synthetic data, real device connectivity, acquisition quality, synchronization, and clinician review is much better than a visually impressive app that invents clinical certainty. Build the strongest possible mobile demonstration of the AirTon home-monitoring workflow while keeping every unverified hardware, ML, clinical, and cloud capability explicitly behind an interface and an honest “not yet available” state.

@@ -1,0 +1,6 @@
+{
+  "name": "AirTon",
+  "description": "Home intraocular-pressure (IOP) monitoring companion prototype for patients under clinician care, with strict simulation boundaries, deterministic fixtures, and offline-first local storage.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
