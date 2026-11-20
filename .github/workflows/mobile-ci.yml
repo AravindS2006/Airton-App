@@ -30,6 +30,12 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      - name: Accept Android SDK licenses
+        run: |
+          if [ -n "${ANDROID_HOME:-}" ] && [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          fi
+
       - name: Set up Gradle 9.3.1
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -53,6 +59,18 @@ jobs:
       - name: Build Debug APK
         run: gradle :app:assembleDebug
 
+      - name: Prepare APK and SHA-256 checksum
+        run: |
+          mkdir -p release-dist
+          APK_FILE=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          if [ -z "$APK_FILE" ]; then
+            echo "::error::No debug APK produced by :app:assembleDebug"
+            exit 1
+          fi
+          cp "$APK_FILE" release-dist/AirTon-debug-preview.apk
+          (cd release-dist && sha256sum AirTon-debug-preview.apk > SHA256SUMS.txt)
+          cat release-dist/SHA256SUMS.txt
+
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -62,9 +80,50 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
-      - name: Upload Debug APK
+      - name: Upload Debug APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: airton-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          path: release-dist/
           retention-days: 14
+
+  publish-preview-release:
+    name: Publish Preview APK Pre-Release
+    needs: verify-and-build-debug
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download Debug APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: airton-debug-apk
+          path: release-dist
+
+      - name: Create or update rolling preview GitHub Pre-Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          NOTES="Automated debug preview APK built from commit ${COMMIT_SHA}. Strictly a prototype simulation build with local fictional fixtures; not a production signed release or clinically cleared medical device. For signed APK + AAB releases, configure signing secrets and push a v* or mobile-v* tag (see RELEASE.md)."
+          if gh release view preview-latest >/dev/null 2>&1; then
+            gh release upload preview-latest \
+              release-dist/AirTon-debug-preview.apk \
+              release-dist/SHA256SUMS.txt \
+              --clobber
+            gh release edit preview-latest \
+              --title "AirTon Android Preview (Latest main)" \
+              --notes "$NOTES" \
+              --prerelease
+          else
+            gh release create preview-latest \
+              release-dist/AirTon-debug-preview.apk \
+              release-dist/SHA256SUMS.txt \
+              --prerelease \
+              --target "$COMMIT_SHA" \
+              --title "AirTon Android Preview (Latest main)" \
+              --notes "$NOTES"
+          fi

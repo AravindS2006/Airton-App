@@ -4,11 +4,13 @@ on:
   push:
     tags:
       - "mobile-v*"
+      - "v*"
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Semantic tag to verify and package (e.g. mobile-v1.0.0)"
+        description: "Semantic tag to verify and package (e.g. mobile-v1.0.0 or v1.0.0)"
         required: true
+        default: "mobile-v1.0.0"
         type: string
 
 permissions:
@@ -35,14 +37,14 @@ jobs:
         shell: bash
         run: |
           TAG="${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}"
-          if [[ ! "$TAG" =~ ^mobile-v([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?)$ ]]; then
-            echo "::error::Tag '$TAG' must match semantic format mobile-vX.Y.Z"
+          if [[ ! "$TAG" =~ ^(mobile-)?v([0-9]+\.[0-9]+(\.[0-9]+)?(-[0-9A-Za-z.-]+)?)$ ]]; then
+            echo "::error::Tag '$TAG' must match semantic format mobile-vX.Y.Z or vX.Y.Z"
             exit 1
           fi
-          TAG_VER="${BASH_REMATCH[1]}"
+          TAG_VER="${BASH_REMATCH[2]}"
           GRADLE_VER=$(grep -E 'versionName\s*=' app/build.gradle.kts | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
           GRADLE_CODE=$(grep -E 'versionCode\s*=' app/build.gradle.kts | head -n1 | sed -E 's/[^0-9]*([0-9]+).*/\1/')
-          echo "Tag version: $TAG_VER | Gradle versionName: $GRADLE_VER | versionCode: $GRADLE_CODE"
+          echo "Tag: $TAG | Tag version: $TAG_VER | Gradle versionName: $GRADLE_VER | versionCode: $GRADLE_CODE"
           if [[ "$TAG_VER" != "$GRADLE_VER" && "$TAG_VER" != "${GRADLE_VER}.0" ]]; then
             echo "::error::Release tag version ($TAG_VER) does not match app/build.gradle.kts versionName ($GRADLE_VER)."
             exit 1
@@ -60,6 +62,12 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      - name: Accept Android SDK licenses
+        run: |
+          if [ -n "${ANDROID_HOME:-}" ] && [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          fi
+
       - name: Set up Gradle 9.3.1
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -69,7 +77,7 @@ jobs:
         run: gradle :app:testDebugUnitTest --stacktrace
 
   build-and-release:
-    name: Signed Release APK, AAB & GitHub Release
+    name: Build APK/AAB & Publish GitHub Release
     needs: verify
     runs-on: ubuntu-latest
     permissions:
@@ -82,6 +90,7 @@ jobs:
       - name: Verify immutable tag does not already have a published release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.verify.outputs.tag_name }}
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
@@ -89,16 +98,19 @@ jobs:
             exit 1
           fi
 
-      - name: Validate required Android signing secrets
+      - name: Check signing secrets availability
+        id: signing
         env:
           B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           SPW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KPW: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          if [[ -z "$B64" || -z "$SPW" || -z "$ALIAS" || -z "$KPW" ]]; then
-            echo "::error::Missing Android signing secrets. Configure ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD in Repository Settings -> Secrets and variables -> Actions (see RELEASE.md)."
-            exit 1
+          if [[ -n "$B64" && -n "$SPW" && -n "$ALIAS" && -n "$KPW" ]]; then
+            echo "has_signing=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_signing=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Android release signing secrets are not configured. Building a clearly labeled Debug Preview Pre-Release APK instead of a production signed release (see RELEASE.md)."
           fi
 
       - name: Set up JDK 21
@@ -107,12 +119,19 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      - name: Accept Android SDK licenses
+        run: |
+          if [ -n "${ANDROID_HOME:-}" ] && [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          fi
+
       - name: Set up Gradle 9.3.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "9.3.1"
 
       - name: Decode persistent signing keystore into temporary path
+        if: steps.signing.outputs.has_signing == 'true'
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
@@ -121,7 +140,8 @@ jobs:
           chmod 600 "$KEYSTORE_TMP"
           echo "KEYSTORE_PATH=$KEYSTORE_TMP" >> "$GITHUB_ENV"
 
-      - name: Build signed APK and AAB
+      - name: Build signed Release APK and AAB
+        if: steps.signing.outputs.has_signing == 'true'
         env:
           STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
@@ -136,19 +156,40 @@ jobs:
             shred -u "$KEYSTORE_PATH" || rm -f "$KEYSTORE_PATH"
           fi
 
+      - name: Build Debug Preview APK when signing secrets are not configured
+        if: steps.signing.outputs.has_signing != 'true'
+        run: |
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair -v -keystore debug.keystore \
+              -storepass android -alias androiddebugkey -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          gradle :app:assembleDebug --no-daemon
+
       - name: Collect release artifacts and generate SHA-256 checksums
         env:
           TAG: ${{ needs.verify.outputs.tag_name }}
+          HAS_SIGNING: ${{ steps.signing.outputs.has_signing }}
         run: |
           mkdir -p release-dist
-          cp app/build/outputs/apk/release/*.apk "release-dist/AirTon-${TAG}-release.apk"
-          cp app/build/outputs/bundle/release/*.aab "release-dist/AirTon-${TAG}-release.aab"
+          if [[ "$HAS_SIGNING" == "true" ]]; then
+            APK_FILE=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+            AAB_FILE=$(find app/build/outputs/bundle/release -name "*.aab" | head -n 1)
+            cp "$APK_FILE" "release-dist/AirTon-${TAG}-release.apk"
+            cp "$AAB_FILE" "release-dist/AirTon-${TAG}-release.aab"
+          else
+            APK_FILE=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+            cp "$APK_FILE" "release-dist/AirTon-${TAG}-debug-preview.apk"
+          fi
           (cd release-dist && sha256sum * > SHA256SUMS.txt)
           cat release-dist/SHA256SUMS.txt
 
-      - name: Publish GitHub Release
+      - name: Publish GitHub Release (Signed)
+        if: steps.signing.outputs.has_signing == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.verify.outputs.tag_name }}
         run: |
           gh release create "$TAG" \
@@ -156,4 +197,18 @@ jobs:
             release-dist/*.aab \
             release-dist/SHA256SUMS.txt \
             --title "AirTon Android Prototype ${TAG}" \
-            --notes "Signed Android prototype release for ${TAG}. Strictly simulation-only demonstration build with local fictional fixtures; not a clinically cleared medical device. See RELEASE.md for verification instructions."
+            --notes "Signed Android prototype release for ${TAG} (APK + AAB + SHA-256 checksums). Strictly simulation-only demonstration build with local fictional fixtures; not a clinically cleared medical device."
+
+      - name: Publish GitHub Pre-Release (Debug Preview APK)
+        if: steps.signing.outputs.has_signing != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.verify.outputs.tag_name }}
+        run: |
+          gh release create "$TAG" \
+            release-dist/*.apk \
+            release-dist/SHA256SUMS.txt \
+            --prerelease \
+            --title "AirTon Android Debug Preview ${TAG}" \
+            --notes "Installable debug preview APK for ${TAG} (published as a pre-release because Android release signing secrets are not yet configured). Strictly simulation-only demonstration build with local fictional fixtures; not a clinically cleared medical device. Configure ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD in GitHub Secrets for signed release APK + AAB builds."
