@@ -1,6 +1,15 @@
 package com.example.ui.screens.patient
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -12,6 +21,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BluetoothDisabled
 import androidx.compose.material.icons.filled.CheckCircle
@@ -21,21 +32,26 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.R
 import com.example.domain.model.EyeSide
 import com.example.domain.model.QualityStatus
 import com.example.domain.model.SimulationScenario
@@ -80,11 +96,9 @@ fun GuidedMeasurementScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Persistent simulation-only hardware disclosure throughout the entire journey
-        item {
-            PrototypeDisclosureBanner(compact = false)
-        }
+        item { PrototypeDisclosureBanner(compact = false) }
 
+        // Segmented 7-Step Clinical Progress Bar
         item {
             AirTonCard {
                 Row(
@@ -117,36 +131,70 @@ fun GuidedMeasurementScreen(
                         Text("Exit")
                     }
                 }
-                LinearProgressIndicator(
-                    progress = { session.step.stepNumber / 7f },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    GuidedSessionStep.entries.forEach { step ->
+                        val active = step.stepNumber <= session.step.stepNumber
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(
+                                    if (active) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.surfaceVariant
+                                )
+                        )
+                    }
+                }
             }
         }
 
         when (session.step) {
             GuidedSessionStep.DISCLOSURE -> {
                 item {
-                    AirTonCard {
-                        Text("1. Review Simulation Disclosure", style = MaterialTheme.typography.titleLarge)
-                        Text(
-                            text = "This walkthrough demonstrates how AirTon guides positioning, checks quality, records eye-specific provenance, and separates local storage from sync and clinician review.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "No physical sensor, air puff, camera, or Bluetooth connection is operating. This workflow never measures your real eye.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Button(
-                            onClick = { onStepChange(GuidedSessionStep.SELECT_EYE) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(48.dp)
-                                .testTag("step1_continue_button")
-                        ) {
-                            Text("Continue to Eye Selection")
+                    Surface(
+                        shape = MaterialTheme.shapes.medium,
+                        border = BorderStroke(1.dp, semantic.cardBorder),
+                        color = MaterialTheme.colorScheme.surface,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column {
+                            Image(
+                                painter = painterResource(id = R.drawable.img_concept_optics_1795199062846),
+                                contentDescription = "Conceptual non-contact optical alignment diagram",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(140.dp)
+                            )
+                            Column(
+                                modifier = Modifier.padding(18.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text("1. Review Simulation Disclosure", style = MaterialTheme.typography.titleLarge)
+                                Text(
+                                    text = "This walkthrough demonstrates how AirTon guides positioning, checks quality, records eye-specific provenance, and separates local storage from sync and clinician review.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "No physical sensor, air puff, camera, or Bluetooth connection is operating. This workflow never measures your real eye.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Button(
+                                    onClick = { onStepChange(GuidedSessionStep.SELECT_EYE) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(48.dp)
+                                        .testTag("step1_continue_button")
+                                ) {
+                                    Text("Continue to Eye Selection")
+                                }
+                            }
                         }
                     }
                 }
@@ -179,12 +227,9 @@ fun GuidedMeasurementScreen(
 
                         HorizontalDivider()
 
+                        Text("Pre-Capture Simulation Scenario", style = MaterialTheme.typography.titleSmall)
                         Text(
-                            text = "Pre-Capture Simulation Scenario",
-                            style = MaterialTheme.typography.titleSmall
-                        )
-                        Text(
-                            text = "Choose any deterministic software outcome to test how AirTon handles accepted captures, rejections, and hardware states.",
+                            text = "Choose any deterministic software outcome to test accepted captures, null-IOP rejections, and hardware states.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -301,16 +346,46 @@ fun GuidedMeasurementScreen(
 
             GuidedSessionStep.ACQUIRING -> {
                 item {
+                    val pulse = if (state.preferences.reducedMotionEnabled) {
+                        1f
+                    } else {
+                        val inf = rememberInfiniteTransition(label = "acquiring_pulse")
+                        val p by inf.animateFloat(
+                            initialValue = 0.9f,
+                            targetValue = 1.12f,
+                            animationSpec = infiniteRepeatable(tween(650), RepeatMode.Reverse),
+                            label = "pulse_val"
+                        )
+                        p
+                    }
                     AirTonCard {
                         Column(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(180.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                            verticalArrangement = Arrangement.Center
                         ) {
-                            CircularProgressIndicator()
+                            Box(
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .scale(pulse)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Science,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+                            Spacer(Modifier.height(14.dp))
                             Text("Running Software Simulation…", style = MaterialTheme.typography.titleMedium)
+                            Spacer(Modifier.height(4.dp))
                             Text(
-                                text = "Generating deterministic v1.0 contract payload for ${session.selectedEye.labelEn}. No physical air puff is operating.",
+                                text = "Generating deterministic v1.0 contract payload for ${session.selectedEye.labelEn}.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -333,16 +408,11 @@ fun GuidedMeasurementScreen(
                         }
 
                         if (record == null) {
-                            // Disconnected simulation scenario
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Icon(
-                                    Icons.Filled.BluetoothDisabled,
-                                    contentDescription = null,
-                                    tint = semantic.statusErrorContent
-                                )
+                                Icon(Icons.Filled.BluetoothDisabled, contentDescription = null, tint = semantic.statusErrorContent)
                                 Text(
                                     text = session.latestOutcomeMessage ?: "Simulated device disconnected.",
                                     style = MaterialTheme.typography.bodyMedium,
@@ -373,17 +443,12 @@ fun GuidedMeasurementScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         } else {
-                            // Rejected acquisition — strictly NO numeric pressure value shown!
                             QualityBadge(QualityStatus.REJECT)
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(
-                                    Icons.Filled.ErrorOutline,
-                                    contentDescription = null,
-                                    tint = semantic.statusErrorContent
-                                )
+                                Icon(Icons.Filled.ErrorOutline, contentDescription = null, tint = semantic.statusErrorContent)
                                 Text(
                                     text = "Acquisition rejected — No IOP value recorded (null)",
                                     style = MaterialTheme.typography.titleMedium,

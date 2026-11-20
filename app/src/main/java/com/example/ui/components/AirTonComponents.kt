@@ -55,6 +55,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -80,7 +81,7 @@ import com.example.ui.theme.LocalAirTonColors
 import com.example.ui.theme.MonoMetadataStyle
 
 /**
- * Persistent high-visibility disclosure banner using both icon and text (never color alone).
+ * Persistent high-visibility disclosure ribbon using icon + left accent bar + clear text.
  */
 @Composable
 fun PrototypeDisclosureBanner(
@@ -94,21 +95,36 @@ fun PrototypeDisclosureBanner(
         modifier = modifier
             .fillMaxWidth()
             .testTag("prototype_disclosure_banner"),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(14.dp),
         color = semantic.demoBannerBg,
-        border = BorderStroke(1.dp, semantic.demoBannerBorder.copy(alpha = 0.55f))
+        border = BorderStroke(1.dp, semantic.demoBannerBorder.copy(alpha = 0.45f))
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = if (compact) 7.dp else 10.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = if (compact) 8.dp else 11.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Icon(
-                imageVector = Icons.Filled.Science,
-                contentDescription = "Simulation prototype indicator",
-                tint = semantic.demoBannerContent,
-                modifier = Modifier.size(18.dp)
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .height(if (compact) 18.dp else 32.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(semantic.demoBannerBorder)
             )
+            Surface(
+                shape = CircleShape,
+                color = semantic.demoBannerBorder.copy(alpha = 0.18f),
+                modifier = Modifier.size(if (compact) 26.dp else 32.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Filled.Science,
+                        contentDescription = "Simulation prototype indicator",
+                        tint = semantic.demoBannerContent,
+                        modifier = Modifier.size(if (compact) 15.dp else 18.dp)
+                    )
+                }
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = strings.prototypeBannerTitle,
@@ -129,25 +145,65 @@ fun PrototypeDisclosureBanner(
 }
 
 @Composable
+fun SectionHeaderRow(
+    title: String,
+    subtitle: String? = null,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        if (actionLabel != null && onAction != null) {
+            TextButton(onClick = onAction) {
+                Text(actionLabel)
+            }
+        }
+    }
+}
+
+@Composable
 fun AirTonCard(
     modifier: Modifier = Modifier,
+    containerColor: Color = MaterialTheme.colorScheme.surface,
+    borderColor: Color = LocalAirTonColors.current.cardBorder,
     onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val semantic = LocalAirTonColors.current
     val baseModifier = if (onClick != null) {
-        modifier.clickable(onClick = onClick)
+        modifier
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(onClick = onClick)
     } else modifier
 
     Card(
         modifier = baseModifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, semantic.cardBorder),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        border = BorderStroke(1.dp, borderColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp)
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
             content = content
         )
@@ -170,7 +226,7 @@ fun StatusPill(
         color = backgroundColor
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
@@ -198,14 +254,14 @@ fun EyeBadge(eye: EyeSide, modifier: Modifier = Modifier) {
     val tint = if (eye == EyeSide.OD) semantic.odSeries else semantic.osSeries
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(8.dp),
-        color = tint.copy(alpha = 0.14f),
-        border = BorderStroke(1.dp, tint.copy(alpha = 0.35f))
+        shape = RoundedCornerShape(9.dp),
+        color = tint.copy(alpha = 0.12f),
+        border = BorderStroke(1.dp, tint.copy(alpha = 0.32f))
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
             Icon(
                 imageVector = Icons.Filled.Visibility,
@@ -343,13 +399,13 @@ fun EmptyOrOfflineStateCard(
     AirTonCard {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Box(
                 modifier = Modifier
-                    .size(44.dp)
+                    .size(46.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -394,82 +450,95 @@ fun AirTonTopBar(
         DemoRole.CLINIC_SERVICE -> strings.roleClinicService.substringBefore(" /")
     }
 
-    TopAppBar(
-        colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = MaterialTheme.colorScheme.background,
-            titleContentColor = MaterialTheme.colorScheme.onBackground
-        ),
-        navigationIcon = {
-            if (showBack && onBack != null) {
-                IconButton(
-                    onClick = onBack,
-                    modifier = Modifier.testTag("top_bar_back_button")
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = strings.back)
+    Column {
+        TopAppBar(
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.surface,
+                titleContentColor = MaterialTheme.colorScheme.onSurface
+            ),
+            navigationIcon = {
+                if (showBack && onBack != null) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.testTag("top_bar_back_button")
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = strings.back)
+                    }
                 }
-            }
-        },
-        title = {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        },
-        actions = {
-            Surface(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(999.dp))
-                    .clickable(onClick = onOpenRoleSwitcher)
-                    .testTag("role_switcher_chip"),
-                shape = RoundedCornerShape(999.dp),
-                color = MaterialTheme.colorScheme.primaryContainer
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.SwapHoriz,
-                        contentDescription = strings.switchPersona,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.size(16.dp)
+            },
+            title = {
+                Column {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = roleShort,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        text = "AirTon · Demo Preview",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1
                     )
                 }
-            }
-
-            IconButton(
-                onClick = onOpenInbox,
-                modifier = Modifier.testTag("open_inbox_button")
-            ) {
-                BadgedBox(
-                    badge = {
-                        if (unreadInboxCount > 0) {
-                            Badge { Text(unreadInboxCount.toString()) }
-                        }
-                    }
+            },
+            actions = {
+                Surface(
+                    modifier = Modifier
+                        .minimumInteractiveComponentSize()
+                        .clip(RoundedCornerShape(999.dp))
+                        .clickable(onClick = onOpenRoleSwitcher)
+                        .testTag("role_switcher_chip"),
+                    shape = RoundedCornerShape(999.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
                 ) {
-                    Icon(Icons.Filled.Notifications, contentDescription = strings.inboxTitle)
+                    Row(
+                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.SwapHoriz,
+                            contentDescription = strings.switchPersona,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = roleShort,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            maxLines = 1
+                        )
+                    }
+                }
+
+                IconButton(
+                    onClick = onOpenInbox,
+                    modifier = Modifier.testTag("open_inbox_button")
+                ) {
+                    BadgedBox(
+                        badge = {
+                            if (unreadInboxCount > 0) {
+                                Badge { Text(unreadInboxCount.toString()) }
+                            }
+                        }
+                    ) {
+                        Icon(Icons.Filled.Notifications, contentDescription = strings.inboxTitle)
+                    }
+                }
+
+                IconButton(
+                    onClick = onOpenSettings,
+                    modifier = Modifier.testTag("open_settings_button")
+                ) {
+                    Icon(Icons.Filled.Settings, contentDescription = strings.settingsTitle)
                 }
             }
-
-            IconButton(
-                onClick = onOpenSettings,
-                modifier = Modifier.testTag("open_settings_button")
-            ) {
-                Icon(Icons.Filled.Settings, contentDescription = strings.settingsTitle)
-            }
-        }
-    )
+        )
+        HorizontalDivider(color = LocalAirTonColors.current.cardBorder)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

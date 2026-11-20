@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -26,10 +25,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
@@ -47,8 +48,8 @@ import kotlin.math.hypot
 /**
  * Dual-series eye-specific synthetic trend visualization.
  * - Keeps OD (Right Eye) and OS (Left Eye) strictly separate (never averaged).
+ * - Renders soft gradient area fills beneath OD/OS trajectories (zero clinical threshold shading).
  * - Displays rejected acquisitions as hollow diamond markers on the baseline with NO IOP number.
- * - Contains ZERO normal-range shading, clinical target bands, or red/green risk thresholds.
  */
 @Composable
 fun EyeTrendChart(
@@ -58,7 +59,7 @@ fun EyeTrendChart(
     onSelectMeasurement: ((String) -> Unit)? = null
 ) {
     val semantic = LocalAirTonColors.current
-    val gridColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
+    val gridColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
     val surfaceColor = MaterialTheme.colorScheme.surface
     val ordered = remember(envelopes) { envelopes.sortedBy { it.measurement.capturedAt } }
     var selectedEnvelope by remember(ordered) { mutableStateOf<MeasurementEnvelope?>(null) }
@@ -81,9 +82,8 @@ fun EyeTrendChart(
         modifier = modifier
             .fillMaxWidth()
             .semantics { contentDescription = accessibilitySummary },
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // Legend — strictly separate OD & OS + Rejected marker
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -112,7 +112,7 @@ fun EyeTrendChart(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(if (compact) 148.dp else 200.dp)
+                .height(if (compact) 160.dp else 214.dp)
         ) {
             Canvas(
                 modifier = Modifier
@@ -122,7 +122,7 @@ fun EyeTrendChart(
                             val nearest = plottedPoints.minByOrNull { (pos, _) ->
                                 hypot(pos.x - tap.x, pos.y - tap.y)
                             }
-                            if (nearest != null && hypot(nearest.first.x - tap.x, nearest.first.y - tap.y) <= 44f) {
+                            if (nearest != null && hypot(nearest.first.x - tap.x, nearest.first.y - tap.y) <= 46f) {
                                 selectedEnvelope = nearest.second
                                 onSelectMeasurement?.invoke(nearest.second.measurement.measurementId)
                             }
@@ -131,12 +131,13 @@ fun EyeTrendChart(
             ) {
                 val leftPad = 24f
                 val rightPad = 24f
-                val topPad = 18f
-                val bottomPad = 26f
+                val topPad = 20f
+                val bottomPad = 28f
                 val plotWidth = (size.width - leftPad - rightPad).coerceAtLeast(1f)
                 val plotHeight = (size.height - topPad - bottomPad).coerceAtLeast(1f)
+                val baselineY = topPad + plotHeight
 
-                // Neutral horizontal reference gridlines (no clinical bands!)
+                // Neutral horizontal reference gridlines (no diagnostic/threshold bands!)
                 for (i in 0..3) {
                     val y = topPad + (plotHeight / 3f) * i
                     drawLine(
@@ -161,7 +162,6 @@ fun EyeTrendChart(
                     return topPad + plotHeight * (1f - ratio)
                 }
 
-                // Draw separate OD & OS polylines connecting ONLY accepted synthetic values
                 val odCoords = mutableListOf<Offset>()
                 val osCoords = mutableListOf<Offset>()
                 val allClickable = mutableListOf<Pair<Offset, MeasurementEnvelope>>()
@@ -174,54 +174,66 @@ fun EyeTrendChart(
                         if (env.measurement.eye == EyeSide.OD) odCoords += pt else osCoords += pt
                         allClickable += pt to env
                     } else {
-                        // Rejected record placed along the baseline with NO pressure value
-                        val baselinePt = Offset(x, topPad + plotHeight + 10f)
+                        val baselinePt = Offset(x, baselineY + 11f)
                         allClickable += baselinePt to env
                     }
                 }
                 plottedPoints = allClickable
 
                 if (odCoords.size >= 2) {
-                    val path = Path().apply {
+                    val fillPath = Path().apply {
+                        moveTo(odCoords.first().x, baselineY)
+                        odCoords.forEach { lineTo(it.x, it.y) }
+                        lineTo(odCoords.last().x, baselineY)
+                        close()
+                    }
+                    drawPath(
+                        path = fillPath,
+                        brush = Brush.verticalGradient(
+                            colors = listOf(semantic.odSeries.copy(alpha = 0.14f), Color.Transparent),
+                            startY = topPad,
+                            endY = baselineY
+                        )
+                    )
+                    val linePath = Path().apply {
                         moveTo(odCoords.first().x, odCoords.first().y)
                         odCoords.drop(1).forEach { lineTo(it.x, it.y) }
                     }
                     drawPath(
-                        path = path,
+                        path = linePath,
                         color = semantic.odSeries,
-                        style = Stroke(width = 4f, cap = StrokeCap.Round)
+                        style = Stroke(width = 4.5f, cap = StrokeCap.Round, join = StrokeJoin.Round)
                     )
                 }
 
                 if (osCoords.size >= 2) {
-                    val path = Path().apply {
+                    val linePath = Path().apply {
                         moveTo(osCoords.first().x, osCoords.first().y)
                         osCoords.drop(1).forEach { lineTo(it.x, it.y) }
                     }
                     drawPath(
-                        path = path,
+                        path = linePath,
                         color = semantic.osSeries,
                         style = Stroke(
-                            width = 4f,
+                            width = 4.2f,
                             cap = StrokeCap.Round,
+                            join = StrokeJoin.Round,
                             pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 8f))
                         )
                     )
                 }
 
-                // Draw points & rejected hollow diamonds
                 allClickable.forEach { (pt, env) ->
                     val isSelected = selectedEnvelope?.measurement?.measurementId == env.measurement.measurementId
                     if (env.measurement.qualityStatus == QualityStatus.PASS) {
                         val color = if (env.measurement.eye == EyeSide.OD) semantic.odSeries else semantic.osSeries
                         if (isSelected) {
-                            drawCircle(color = color.copy(alpha = 0.22f), radius = 18f, center = pt)
+                            drawCircle(color = color.copy(alpha = 0.22f), radius = 20f, center = pt)
                         }
-                        drawCircle(color = surfaceColor, radius = 9.5f, center = pt)
-                        drawCircle(color = color, radius = 7f, center = pt)
+                        drawCircle(color = surfaceColor, radius = 10f, center = pt)
+                        drawCircle(color = color, radius = 7.2f, center = pt)
                     } else {
-                        // Hollow diamond for rejected acquisition (no numeric IOP)
-                        val r = if (isSelected) 11f else 8f
+                        val r = if (isSelected) 11.5f else 8.5f
                         val diamond = Path().apply {
                             moveTo(pt.x, pt.y - r)
                             lineTo(pt.x + r, pt.y)
@@ -241,7 +253,7 @@ fun EyeTrendChart(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = "Scale: ${String.format(Locale.US, "%.0f", minY)}–${String.format(Locale.US, "%.0f", maxY)} mmHg (Synthetic demo values only)",
+                text = "Scale: ${String.format(Locale.US, "%.0f", minY)}–${String.format(Locale.US, "%.0f", maxY)} mmHg (Synthetic demo only)",
                 style = MonoMetadataStyle,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
